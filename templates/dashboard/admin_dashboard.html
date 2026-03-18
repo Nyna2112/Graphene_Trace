@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-9 order-2 order-lg-1">
+        <div class="mb-4">
+            <h2 class="fw-bold mb-1">Admin Dashboard</h2>
+            <p class="text-muted mb-0">Operations overview for administrators.</p>
+        </div>
+
+        <div class="row g-4 mb-4">
+            <div class="col-md-4"><div class="card stat-card border-0 shadow-sm rounded-4"><div class="card-body"><div class="small text-muted">Total Clinician Count</div><div class="display-6 fw-bold">{{ clinician_count }}</div></div></div></div>
+            <div class="col-md-4"><div class="card stat-card border-0 shadow-sm rounded-4"><div class="card-body"><div class="small text-muted">Average Feedback Rating</div><div class="display-6 fw-bold">{{ avg_rating }}</div></div></div></div>
+            <div class="col-md-4"><div class="card stat-card border-0 shadow-sm rounded-4"><div class="card-body"><div class="small text-muted">System Alerts</div><div class="display-6 fw-bold">{{ system_alerts|length }}</div></div></div></div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body">
+                <h5>Recent System Activity</h5>
+                <ul class="list-group list-group-flush mt-3">
+                    {% for item in recent_activity %}
+                        <li class="list-group-item px-0">
+                            <div class="fw-semibold">{{ item.action }} · {{ item.user.username }}</div>
+                            <div class="text-muted small">{{ item.details }} · {{ item.created_at|date:"M d, Y H:i" }}</div>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item px-0 text-muted">No system activity available.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body">
+                <h5>System Alerts</h5>
+                <ul class="list-group list-group-flush mt-3">
+                    {% for alert in system_alerts %}
+                        <li class="list-group-item px-0">
+                            <span class="badge {% if alert.level == 'critical' %}text-bg-danger{% elif alert.level == 'warning' %}text-bg-warning{% else %}text-bg-info{% endif %}">{{ alert.get_level_display }}</span>
+                            <span class="ms-2">{{ alert.message }}</span>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item px-0 text-muted">No active alerts.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body">
+                <h5>Patient Feedback</h5>
+                <div class="table-responsive mt-3">
+                    <table class="table align-middle">
+                        <thead><tr><th>Patient</th><th>Rating</th><th>Feedback</th></tr></thead>
+                        <tbody>
+                            {% for feedback in feedbacks %}
+                            <tr>
+                                <td>{{ feedback.patient.user.get_full_name|default:feedback.patient.user.username }}</td>
+                                <td>{{ feedback.rating }}/5</td>
+                                <td>{{ feedback.message }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-muted">No feedback available.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 order-1 order-lg-2">
+        <div class="card border-0 shadow-sm rounded-4 sticky-lg-top admin-menu">
+            <div class="card-body">
+                <h5 class="mb-3">Admin Menu</h5>
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item px-0">
+                        <div class="fw-semibold">1. Clinician Access Control</div>
+                        <small class="text-muted">View clinicians and manage status.</small>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <div class="fw-semibold">2. File Management</div>
+                        <small class="text-muted">View, update, delete patient records.</small>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <div class="fw-semibold">3. User Management</div>
+                        <small class="text-muted">Manage all registered users.</small>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <div class="fw-semibold">4. Patient Feedback</div>
+                        <small class="text-muted">Review ratings and comments.</small>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <div class="fw-semibold">5. System Activity Logs</div>
+                        <small class="text-muted">Track login and system usage.</small>
+                    </div>
+                </div>
+                <hr>
+                <div class="small text-muted mb-2">Clinician Access Control</div>
+                {% for clinician in clinicians %}
+                    <div class="d-flex justify-content-between small border-bottom py-2">
+                        <span>{{ clinician.user.get_full_name|default:clinician.user.username }}</span>
+                        <span class="badge {% if clinician.status == 'active' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ clinician.get_status_display }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

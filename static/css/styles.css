@@ -1,0 +1,18 @@
+body {
+    background: #f5f7fb;
+}
+.login-page {
+    background: linear-gradient(135deg, #e8f1ff 0%, #f8fbff 100%);
+}
+.card {
+    border-radius: 1rem;
+}
+.stat-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+.admin-menu {
+    top: 1rem;
+}
+.table > :not(caption) > * > * {
+    padding: 0.85rem 0.75rem;
+}

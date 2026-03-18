@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1">Clinician Dashboard</h2>
+        <p class="text-muted mb-0">Overview for Dr. {{ clinician.user.get_full_name|default:clinician.user.username }}</p>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-4 col-xl-3"><div class="card stat-card border-0 shadow-sm rounded-4"><div class="card-body"><div class="small text-muted">Today's Patient Count</div><div class="display-6 fw-bold">{{ todays_patient_count }}</div></div></div></div>
+    <div class="col-md-4 col-xl-3"><div class="card stat-card border-0 shadow-sm rounded-4"><div class="card-body"><div class="small text-muted">Recent Consultations</div><div class="display-6 fw-bold">{{ recent_consultations_count }}</div></div></div></div>
+    <div class="col-md-4 col-xl-3"><div class="card stat-card border-0 shadow-sm rounded-4"><div class="card-body"><div class="small text-muted">Pending Reviews</div><div class="display-6 fw-bold">{{ pending_reviews_count }}</div></div></div></div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body">
+                <h5>High Blood Pressure Alerts</h5>
+                <div class="table-responsive mt-3">
+                    <table class="table align-middle">
+                        <thead><tr><th>Patient</th><th>Reading</th><th>Status</th></tr></thead>
+                        <tbody>
+                        {% for alert in high_bp_alerts %}
+                            <tr>
+                                <td>{{ alert.patient.user.get_full_name|default:alert.patient.user.username }}</td>
+                                <td>{{ alert.systolic }}/{{ alert.diastolic }}</td>
+                                <td><span class="badge text-bg-danger">{{ alert.get_status_display }}</span></td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="3" class="text-muted">No active high pressure alerts.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body">
+                <h5>Weekly Working Logbook</h5>
+                <ul class="list-group list-group-flush mt-3">
+                    {% for log in weekly_logs %}
+                        <li class="list-group-item px-0">
+                            <div class="fw-semibold">{{ log.patient.user.get_full_name|default:log.patient.user.username }}</div>
+                            <div class="text-muted small">{{ log.week_start }} · {{ log.note }}</div>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item px-0 text-muted">No weekly logbook entries yet.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body">
+                <h5>Prescription History</h5>
+                <div class="table-responsive mt-3">
+                    <table class="table align-middle">
+                        <thead><tr><th>Patient</th><th>Medication</th><th>Dosage</th><th>Issued</th></tr></thead>
+                        <tbody>
+                        {% for prescription in prescription_history %}
+                            <tr>
+                                <td>{{ prescription.patient.user.get_full_name|default:prescription.patient.user.username }}</td>
+                                <td>{{ prescription.medication }}</td>
+                                <td>{{ prescription.dosage }}</td>
+                                <td>{{ prescription.issued_at }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="4" class="text-muted">No prescription history available.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

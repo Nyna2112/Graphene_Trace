@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <h2 class="fw-bold">Welcome Back!</h2>
+                <p class="text-muted mb-0">Track your pressure report and stay connected with your care team.</p>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Assigned Clinician</h5>
+                        {% if patient.clinician %}
+                            <p class="mb-1 fw-semibold">Dr. {{ patient.clinician.user.get_full_name|default:patient.clinician.user.username }}</p>
+                            <p class="text-muted mb-1">{{ patient.clinician.specialty }}</p>
+                            <p class="text-muted mb-0">{{ patient.clinician.phone }}</p>
+                        {% else %}
+                            <p class="text-muted mb-0">No clinician assigned yet.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Latest Blood Pressure Report</h5>
+                        {% if latest_report %}
+                            <h3 class="fw-bold">{{ latest_report.systolic }}/{{ latest_report.diastolic }}</h3>
+                            <span class="badge {% if latest_report.status == 'high' %}text-bg-danger{% elif latest_report.status == 'low' %}text-bg-warning{% else %}text-bg-success{% endif %}">
+                                {{ latest_report.get_status_display }}
+                            </span>
+                            <p class="text-muted mt-2 mb-0">Recorded {{ latest_report.recorded_at|date:"M d, Y H:i" }}</p>
+                        {% else %}
+                            <p class="text-muted mb-0">No pressure report available.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mt-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Pressure Trend Chart</h5>
+                </div>
+                <canvas id="pressureChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body">
+                <h5 class="mb-3">Update Symptoms</h5>
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form.symptoms }}
+                    <button type="submit" class="btn btn-primary mt-3 w-100">Update Symptoms</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('pressureChart');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ chart_labels|safe }},
+        datasets: [
+            {
+                label: 'Systolic',
+                data: {{ systolic_data|safe }},
+                tension: 0.3,
+                borderWidth: 2
+            },
+            {
+                label: 'Diastolic',
+                data: {{ diastolic_data|safe }},
+                tension: 0.3,
+                borderWidth: 2
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } }
+    }
+});
+</script>
+{% endblock %}
