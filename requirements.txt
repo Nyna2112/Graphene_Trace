@@ -1,9 +1,0 @@
-Django>=5.0,<6.0
-<<<<<<< HEAD
-=======
-pandas>=2.0
-numpy>=1.24
-scikit-learn>=1.3
-reportlab>=4.0
-joblib>=1.3
->>>>>>> 97d8f1e099dcb14aee571f3435fdeabc74c65f11
