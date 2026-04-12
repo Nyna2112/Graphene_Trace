@@ -90,3 +90,15 @@ class FrameComment(models.Model):
 
     def __str__(self):
         return f'Comment by {self.author} on {self.frame}'
+<<<<<<< HEAD
+=======
+
+class UploadedPressureFile(models.Model):
+    patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name='uploaded_files')
+    file = models.FileField(upload_to='pressure_uploads/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    processed = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.patient.external_id} - {self.file.name}"
+>>>>>>> e8972cb74228f0025e74b408502006ef45737c8c

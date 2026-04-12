@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+<<<<<<< HEAD
 {% block title %}Clinician Dashboard{% endblock %}
 
 {% block content %}
@@ -117,3 +118,70 @@
 </div>
 
 {% endblock %}
+=======
+{% block title %}Clinician Review{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="mb-0">Patient Review</h1>
+    <p class="text-muted mb-0">{{ patient.user.username }} · {{ patient.external_id }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'dashboard:clinician_dashboard' %}">Back</a>
+</div>
+{% if selected_frame %}
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-body">
+      <h4>Latest frame</h4>
+      <div id="heatmap" class="heatmap-grid mb-3"></div>
+      <p>{{ selected_frame.plain_english_summary }}</p>
+      <div class="small text-muted">{{ selected_frame.recorded_at }}</div>
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card"><div class="card-body">
+      <h4>Comments</h4>
+      {% for comment in comments %}
+        <div class="comment-block">
+          <div class="small text-muted">{{ comment.author.username }} · {{ comment.created_at }}</div>
+          <div class="mb-2">{{ comment.message }}</div>
+          {% for reply in comment.replies.all %}
+            <div class="ms-4 p-2 border-start border-3 mb-2">
+              <div class="small text-muted">{{ reply.author.username }} · {{ reply.created_at }}</div>
+              <div>{{ reply.message }}</div>
+            </div>
+          {% endfor %}
+          <form method="post" action="{% url 'dashboard:reply_to_comment' comment.id %}">
+            {% csrf_token %}
+            {{ reply_form.message }}
+            <button class="btn btn-sm btn-primary mt-2">Reply</button>
+          </form>
+        </div>
+      {% empty %}
+        <p>No comments yet.</p>
+      {% endfor %}
+    </div></div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_js %}
+{% if selected_frame %}
+<script>
+  const matrix = {{ selected_frame.matrix_json|safe }};
+  const heatmap = document.getElementById('heatmap');
+  function colorFor(value) {
+    const alpha = Math.min(1, value / 180);
+    return `rgba(220, 53, 69, ${alpha})`;
+  }
+  matrix.flat().forEach(v => {
+    const cell = document.createElement('div');
+    cell.className = 'heat-cell';
+    cell.style.backgroundColor = colorFor(v);
+    cell.title = v;
+    heatmap.appendChild(cell);
+  });
+</script>
+{% endif %}
+{% endblock %}
+>>>>>>> e8972cb74228f0025e74b408502006ef45737c8c
