@@ -12,4 +12,8 @@ urlpatterns = [
     path('clinician/patient/<int:patient_id>/', views.clinician_patient_detail, name='clinician_patient_detail'),
     path('clinician/comment/<int:comment_id>/reply/', views.reply_to_comment, name='reply_to_comment'),
     path('admin/', views.admin_dashboard, name='admin_dashboard'),
+<<<<<<< HEAD
+=======
+    path('patient/upload/', views.upload_pressure_file, name='upload_pressure_file'),
+>>>>>>> e8972cb74228f0025e74b408502006ef45737c8c
 ]

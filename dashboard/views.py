@@ -7,6 +7,14 @@ from django.db.models import Count
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+<<<<<<< HEAD
+=======
+import csv
+from datetime import datetime, timedelta, timezone as dt_timezone
+from .models import UploadedPressureFile
+from .utils import compute_frame_metrics, HIGH_PRESSURE_THRESHOLD
+from .forms import FrameCommentForm, UploadPressureFileForm
+>>>>>>> e8972cb74228f0025e74b408502006ef45737c8c
 
 from .decorators import role_required
 from .forms import FrameCommentForm
@@ -153,3 +161,71 @@ def admin_dashboard(request):
         'latest_sessions': PressureSession.objects.select_related('patient__user')[:10],
     }
     return render(request, 'dashboard/admin_dashboard.html', context)
+<<<<<<< HEAD
+=======
+
+@role_required(User.Roles.PATIENT)
+def upload_pressure_file(request):
+    patient = get_object_or_404(PatientProfile, user=request.user)
+
+    if request.method == 'POST':
+        form = UploadPressureFileForm(request.POST, request.FILES)
+        if form.is_valid():
+            upload = form.save(commit=False)
+            upload.patient = patient
+            upload.save()
+
+            csv_file = upload.file.path
+            source_name = upload.file.name.split('/')[-1]
+
+            session_date = timezone.now().date()
+            session_start = timezone.now()
+
+            session = PressureSession.objects.create(
+                patient=patient,
+                source_file=source_name,
+                session_date=session_date,
+                started_at=session_start,
+                frame_count=0,
+            )
+
+            with open(csv_file, newline='') as f:
+                rows = [list(map(float, row)) for row in csv.reader(f) if row]
+
+            frame_count = len(rows) // 32
+
+            for frame_index in range(frame_count):
+                matrix = rows[frame_index * 32:(frame_index + 1) * 32]
+                recorded_at = session_start + timedelta(seconds=frame_index)
+                metrics = compute_frame_metrics(matrix)
+
+                frame = PressureFrame.objects.create(
+                    session=session,
+                    frame_index=frame_index,
+                    recorded_at=recorded_at,
+                    matrix_json=matrix,
+                    **metrics,
+                )
+
+                if metrics['flagged_for_review']:
+                    max_value = metrics['peak_pressure_index'] or metrics['max_pressure']
+                    level = PatientAlert.Levels.CRITICAL if max_value >= HIGH_PRESSURE_THRESHOLD + 30 else PatientAlert.Levels.WARNING
+                    PatientAlert.objects.create(
+                        patient=patient,
+                        frame=frame,
+                        level=level,
+                        message=f'High pressure region detected at frame {frame_index}.',
+                    )
+
+            session.frame_count = frame_count
+            session.save()
+            upload.processed = True
+            upload.save()
+
+            messages.success(request, 'CSV uploaded and processed successfully.')
+            return redirect('dashboard:patient_dashboard')
+    else:
+        form = UploadPressureFileForm()
+
+    return render(request, 'dashboard/upload_pressure_file.html', {'form': form})
+>>>>>>> e8972cb74228f0025e74b408502006ef45737c8c
