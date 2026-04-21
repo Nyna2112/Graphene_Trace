@@ -1,0 +1,77 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Register | Graphene Trace</title>
+  <link href="{% static 'css/styles.css' %}" rel="stylesheet">
+</head>
+<body class="login-body">
+  <div class="login-page-label">Register</div>
+  <div class="login-card card-soft">
+    <h1>Create Account</h1>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="text-danger small mb-3">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% if form.non_field_errors %}
+      <div class="text-danger small mb-3">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+
+      <label class="field-label">Account Type</label>
+      {{ form.role }}
+
+      <div style="display:flex; gap:12px; margin-top:1rem;">
+        <div style="flex:1;">
+          <label class="field-label">First Name</label>
+          {{ form.first_name }}
+          {% if form.first_name.errors %}
+            <div class="text-danger small">{{ form.first_name.errors }}</div>
+          {% endif %}
+        </div>
+        <div style="flex:1;">
+          <label class="field-label">Last Name</label>
+          {{ form.last_name }}
+        </div>
+      </div>
+
+      <label class="field-label mt-3">Email Address</label>
+      {{ form.email }}
+      {% if form.email.errors %}
+        <div class="text-danger small">{{ form.email.errors }}</div>
+      {% endif %}
+
+      <label class="field-label mt-3">Patient ID / Clinician ID <span class="brand-subtitle">(optional)</span></label>
+      {{ form.external_id }}
+
+      <label class="field-label mt-3">Password</label>
+      {{ form.password }}
+      {% if form.password.errors %}
+        <div class="text-danger small">{{ form.password.errors }}</div>
+      {% endif %}
+
+      <label class="field-label mt-3">Confirm Password</label>
+      {{ form.confirm_password }}
+      {% if form.confirm_password.errors %}
+        <div class="text-danger small">{{ form.confirm_password.errors }}</div>
+      {% endif %}
+
+      <div class="btn-center mt-3">
+        <button class="primary-btn login-btn" type="submit">Register</button>
+      </div>
+    </form>
+
+    <div class="btn-center mt-3">
+      <span class="brand-subtitle">Already have an account? </span>
+      <a href="{% url 'login' %}" class="brand-subtitle" style="color: var(--accent);">Sign In</a>
+    </div>
+  </div>
+</body>
+</html>

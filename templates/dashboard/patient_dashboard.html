@@ -1,128 +1,180 @@
 {% extends 'base.html' %}
 {% block title %}Patient Dashboard{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="topbar">
+  <div class="brand-block">
+    <div>
+      <div class="brand-title">Graphene Trace</div>
+      <div class="brand-subtitle">Patient Dashboard</div>
+    </div>
+  </div>
+  <div class="user-block">
+    <div class="text-end">
+      <div class="user-name">{{ patient.user.first_name }}</div>
+      <div class="brand-subtitle">ID: {{ patient.external_id }}</div>
+    </div>
+    <form method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button class="icon-btn">↪</button>
+    </form>
+  </div>
+</div>
+{% if latest_alert %}
+  <div class="alert-banner">
+    <div>
+      <div class="fw-semibold">⚠ High Pressure Detected</div>
+      <div class="brand-subtitle mt-1">{{ latest_alert.message }}</div>
+    </div>
+    <form method="post" action="{% url 'dashboard:dismiss_patient_alert' latest_alert.id %}">
+      {% csrf_token %}
+      <button class="secondary-btn" type="submit">Dismiss</button>
+    </form>
+  </div>
+{% endif %}
+<div class="dashboard-grid patient-grid mt-3">
   <div>
-    <h1 class="mb-0">Patient Dashboard</h1>
-    <p class="text-muted mb-0">{{ patient.user.username }} · {{ patient.external_id }}</p>
-  </div>
-  <div class="btn-group">
-    <a class="btn btn-outline-primary {% if period == '1h' %}active{% endif %}" href="?period=1h">1h</a>
-    <a class="btn btn-outline-primary {% if period == '6h' %}active{% endif %}" href="?period=6h">6h</a>
-    <a class="btn btn-outline-primary {% if period == '24h' %}active{% endif %}" href="?period=24h">24h</a>
-    <a class="btn btn-outline-primary {% if period == 'all' %}active{% endif %}" href="?period=all">All</a>
-  </div>
-</div>
-{% if selected_frame %}
-<div class="row g-4 mb-4">
-  <div class="col-lg-7">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h4 class="mb-0">Pressure heatmap</h4>
-          <select class="form-select w-auto" onchange="location.href='?period={{ period }}&frame=' + this.value">
-            {% for frame in frame_options %}
-              <option value="{{ frame.id }}" {% if selected_frame.id == frame.id %}selected{% endif %}>{{ frame.recorded_at }}</option>
-            {% endfor %}
-          </select>
+    <div class="content-card">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="section-title mb-0">Live Pressure Heatmap</div>
+        <div class="brand-subtitle">● Live</div>
+      </div>
+      <div class="legend-row">
+        <span><i class="legend low"></i>Low</span>
+        <span><i class="legend medium"></i>Medium</span>
+        <span><i class="legend high"></i>High</span>
+        <span class="ms-auto">Updated: {% if selected_frame %}{{ selected_frame.recorded_at|date:'h:i:s a' }}{% endif %}</span>
+      </div>
+      <form method="get" class="filter-row mt-2">
+        <select name="day" class="field-input slim">
+          {% for session in sessions %}
+            <option value="{{ session.id }}" {% if selected_session and session.id == selected_session.id %}selected{% endif %}>{{ session.session_date }}</option>
+          {% endfor %}
+        </select>
+        <select name="interval" class="field-input slim">
+          <option value="3h" {% if interval == '3h' %}selected{% endif %}>3 Hours</option>
+          <option value="9h" {% if interval == '9h' %}selected{% endif %}>9 Hours</option>
+          <option value="24h" {% if interval == '24h' %}selected{% endif %}>24 Hours</option>
+        </select>
+        <button class="secondary-btn" type="submit">Apply</button>
+      </form>
+      <div class="heatmap-wrap mt-3">
+        <div class="heatmap-grid large-grid">
+          {% for cell in heatmap_cells %}
+            <div class="heat-cell" style="background: {{ cell.color }}" title="{{ cell.value }} - {{ cell.label }}"></div>
+          {% endfor %}
         </div>
-        <div id="heatmap" class="heatmap-grid mb-3"></div>
-        <p class="mb-1"><strong>What this means:</strong> {{ selected_frame.plain_english_summary }}</p>
-        <small class="text-muted">Timestamp: {{ selected_frame.recorded_at }}</small>
       </div>
     </div>
-  </div>
-  <div class="col-lg-5">
-    <div class="row g-3">
-      <div class="col-6"><div class="metric-card"><div class="metric-value">{{ selected_frame.peak_pressure_index|floatformat:1 }}</div><div class="metric-label">Peak Pressure Index</div></div></div>
-      <div class="col-6"><div class="metric-card"><div class="metric-value">{{ selected_frame.contact_area_percent|floatformat:1 }}%</div><div class="metric-label">Contact Area</div></div></div>
-      <div class="col-6"><div class="metric-card"><div class="metric-value">{{ selected_frame.occupied_pixels }}</div><div class="metric-label">Occupied Pixels</div></div></div>
-      <div class="col-6"><div class="metric-card"><div class="metric-value">{{ selected_frame.high_pressure_regions|length }}</div><div class="metric-label">High-Pressure Regions</div></div></div>
+    <div class="content-card mt-3">
+      <div class="section-title">Pressure Metrics Over Time</div>
+      <div class="brand-subtitle">Track your pressure patterns</div>
+      <div class="chip-row mt-3">
+        <a class="chip-link" href="?day={{ selected_session.id }}&interval={{ interval }}&chart=hour"><span class="chip {% if chart_mode == 'hour' %}active{% endif %}">Last Hour</span></a>
+        <a class="chip-link" href="?day={{ selected_session.id }}&interval={{ interval }}&chart=interval"><span class="chip {% if chart_mode == 'interval' %}active{% endif %}">Last {{ interval }}</span></a>
+        <a class="chip-link" href="?day={{ selected_session.id }}&interval={{ interval }}&chart=day"><span class="chip {% if chart_mode == 'day' %}active{% endif %}">Selected Day</span></a>
+        <a class="secondary-btn ms-auto" href="{% url 'dashboard:download_patient_report' %}?day={{ selected_session.id }}&interval={{ interval }}">Download Report</a>
+      </div>
+      <div class="metric-chart-title mt-3">Peak Pressure Index</div>
+      <canvas id="ppiChart" height="120"></canvas>
+      <div class="metric-chart-title mt-3">Contact Area</div>
+      <canvas id="contactChart" height="120"></canvas>
     </div>
-    <div class="card mt-3">
-      <div class="card-body">
-        <h5>Recent alerts</h5>
-        {% for alert in alerts %}
-          <div class="alert alert-{% if alert.level == 'critical' %}danger{% else %}warning{% endif %} py-2 mb-2">
-            <div class="fw-semibold text-capitalize">{{ alert.level }}</div>
-            <div>{{ alert.message }}</div>
+    <div class="content-card mt-3">
+      <div class="section-title">Predictive Analysis</div>
+      {% for item in predictive %}
+        <div class="prediction-card mt-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>{{ item.region }}</div>
+            <div class="risk-badge {% if item.risk == 'high risk' %}high{% elif item.risk == 'medium risk' %}medium{% else %}low{% endif %}">{{ item.risk }}</div>
           </div>
-        {% empty %}
-          <p class="mb-0">No alerts in this dataset.</p>
-        {% endfor %}
+          <div class="d-flex justify-content-between mt-2">
+            <div>Probability: <strong>{{ item.probability }}%</strong></div>
+            <div>Est. time: <strong>{{ item.time }} min</strong></div>
+          </div>
+        </div>
+      {% endfor %}
+      <div class="recommendation-box mt-3">
+        <strong>Recommendation:</strong>
+        {% if recommendation == 'high risk' %}
+          Change position immediately and notify clinician if pain persists.
+        {% elif recommendation == 'medium risk' %}
+          Monitor the area closely and reposition within 10–15 minutes.
+        {% else %}
+          Continue regular checks and maintain good posture.
+        {% endif %}
       </div>
     </div>
   </div>
-</div>
-<div class="card mb-4">
-  <div class="card-body">
-    <h4>Trends over time</h4>
-    <canvas id="trendChart" height="100"></canvas>
-  </div>
-</div>
-<div class="row g-4">
-  <div class="col-lg-5">
-    <div class="card h-100"><div class="card-body">
-      <h4>Add comment for this timestamp</h4>
-      <form method="post" action="{% url 'dashboard:add_frame_comment' selected_frame.id %}">
+  <div>
+    <div class="content-card">
+      <div class="section-title">Current Metrics</div>
+      <div class="brand-subtitle">Real-time measurements</div>
+      <div class="metric-box mt-3">
+        <div class="brand-subtitle">Peak Pressure Index</div>
+        <div class="metric-value-large">{{ current_metrics.peak_pressure_index }}</div>
+      </div>
+      <div class="metric-box mt-3">
+        <div class="brand-subtitle">Contact Area</div>
+        <div class="metric-value-large">{{ current_metrics.contact_area_percent }}%</div>
+      </div>
+    </div>
+    <div class="content-card mt-3">
+      <div class="section-title">Add Comment</div>
+      <div class="brand-subtitle">Log your observations at this moment</div>
+      <form method="post" class="mt-3">
         {% csrf_token %}
         {{ comment_form.message }}
-        <button class="btn btn-primary mt-2">Save comment</button>
+        <div class="d-flex justify-content-between align-items-center mt-2 gap-2 flex-wrap">
+          <div class="brand-subtitle">Timestamp: {% if selected_frame %}{{ selected_frame.recorded_at|date:'d/m/Y, h:i:s a' }}{% endif %}</div>
+          <button class="primary-btn" type="submit">➤ Submit</button>
+        </div>
       </form>
-    </div></div>
-  </div>
-  <div class="col-lg-7">
-    <div class="card h-100"><div class="card-body">
-      <h4>Comment thread</h4>
-      {% for comment in top_comments %}
-        <div class="comment-block">
-          <div class="small text-muted">{{ comment.author.username }} · {{ comment.created_at }}</div>
+      {% for comment in comments %}
+        <div class="comment-mini">
+          <div class="fw-semibold">{{ comment.author.first_name|default:comment.author.username }}</div>
           <div>{{ comment.message }}</div>
           {% for reply in comment.replies.all %}
-            <div class="ms-4 p-2 border-start border-3 mt-2">
-              <div class="small text-muted">{{ reply.author.username }} · {{ reply.created_at }}</div>
+            <div class="reply-mini">
+              <div class="fw-semibold">{{ reply.author.first_name|default:reply.author.username }}</div>
               <div>{{ reply.message }}</div>
             </div>
           {% endfor %}
         </div>
       {% empty %}
-        <p class="mb-0">No comments for this timestamp yet.</p>
+        <div class="brand-subtitle mt-3">No comments yet.</div>
       {% endfor %}
-    </div></div>
+    </div>
+    <div class="content-card mt-3">
+      <div class="section-title">Additional Metrics</div>
+      <div class="brand-subtitle">Extended measurements</div>
+      <div class="metrics-grid mt-3 metrics-grid-compact">
+        <div class="small-metric"><div class="brand-subtitle">Avg Pressure</div><strong>{{ current_metrics.average_pressure }}</strong></div>
+        <div class="small-metric"><div class="brand-subtitle">Repositions/Hour</div><strong>{{ current_metrics.reposition_per_hour }}</strong></div>
+        <div class="small-metric"><div class="brand-subtitle">High Pressure Time</div><strong>{{ current_metrics.high_pressure_time }}</strong></div>
+      </div>
+    </div>
+    <div class="content-card mt-3">
+      <div class="section-title">Quick Tips</div>
+      <ul class="tips-list">
+        <li>Reposition every 15-30 minutes</li>
+        <li>Check for high pressure areas regularly</li>
+        <li>Contact your clinician if pain persists</li>
+      </ul>
+    </div>
   </div>
 </div>
-{% else %}
-<p>No frames available yet. Run the importer first.</p>
-{% endif %}
 {% endblock %}
 {% block extra_js %}
-{% if selected_frame %}
 <script>
-  const matrix = {{ selected_frame.matrix_json|safe }};
-  const heatmap = document.getElementById('heatmap');
-  function colorFor(value) {
-    const alpha = Math.min(1, value / 180);
-    return `rgba(13, 110, 253, ${alpha})`;
-  }
-  matrix.flat().forEach(v => {
-    const cell = document.createElement('div');
-    cell.className = 'heat-cell';
-    cell.style.backgroundColor = colorFor(v);
-    cell.title = v;
-    heatmap.appendChild(cell);
-  });
-
-  new Chart(document.getElementById('trendChart'), {
-    type: 'line',
-    data: {
-      labels: {{ chart_labels|safe }},
-      datasets: [
-        {label: 'Peak Pressure Index', data: {{ ppi_data|safe }}, borderWidth: 2, tension: 0.2},
-        {label: 'Contact Area %', data: {{ contact_area_data|safe }}, borderWidth: 2, tension: 0.2}
-      ]
-    },
-    options: {responsive: true, maintainAspectRatio: true, scales: {x: {display: false}}}
-  });
+new Chart(document.getElementById('ppiChart'),{
+  type:'line',
+  data:{labels:{{ chart_labels|safe }},datasets:[{label:'Peak Pressure Index',data:{{ ppi_data|safe }},borderWidth:2,tension:.35}]},
+  options:{plugins:{legend:{display:false}},scales:{x:{display:false}}}
+});
+new Chart(document.getElementById('contactChart'),{
+  type:'line',
+  data:{labels:{{ chart_labels|safe }},datasets:[{label:'Contact Area',data:{{ contact_area_data|safe }},borderWidth:2,tension:.35}]},
+  options:{plugins:{legend:{display:false}},scales:{x:{display:false}}}
+});
 </script>
-{% endif %}
 {% endblock %}

@@ -6,14 +6,13 @@ app_name = 'dashboard'
 urlpatterns = [
     path('', views.role_redirect, name='role_redirect'),
     path('patient/', views.patient_dashboard, name='patient_dashboard'),
-    path('patient/frame/<int:frame_id>/', views.patient_frame_detail, name='patient_frame_detail'),
-    path('patient/frame/<int:frame_id>/comment/', views.add_frame_comment, name='add_frame_comment'),
+    path('patient/dismiss-alert/<int:alert_id>/', views.dismiss_patient_alert, name='dismiss_patient_alert'),
+    path('patient/download-report/', views.download_patient_report, name='download_patient_report'),
     path('clinician/', views.clinician_dashboard, name='clinician_dashboard'),
-    path('clinician/patient/<int:patient_id>/', views.clinician_patient_detail, name='clinician_patient_detail'),
-    path('clinician/comment/<int:comment_id>/reply/', views.reply_to_comment, name='reply_to_comment'),
+    path('clinician/review-alert/<int:alert_id>/', views.review_alert, name='review_alert'),
+    path('clinician/reply-comment/<int:comment_id>/', views.reply_comment, name='reply_comment'),
+    path('clinician/download-report/<int:patient_id>/', views.clinician_download_patient_report, name='clinician_download_patient_report'),
     path('admin/', views.admin_dashboard, name='admin_dashboard'),
-<<<<<<< HEAD
-=======
-    path('patient/upload/', views.upload_pressure_file, name='upload_pressure_file'),
->>>>>>> e8972cb74228f0025e74b408502006ef45737c8c
+    path('register/', views.register, name='register'),
+    
 ]

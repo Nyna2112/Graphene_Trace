@@ -1,231 +1,396 @@
 import json
 from datetime import timedelta
-
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db.models import Count
-from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
-<<<<<<< HEAD
-=======
-import csv
-from datetime import datetime, timedelta, timezone as dt_timezone
-from .models import UploadedPressureFile
-from .utils import compute_frame_metrics, HIGH_PRESSURE_THRESHOLD
-from .forms import FrameCommentForm, UploadPressureFileForm
->>>>>>> e8972cb74228f0025e74b408502006ef45737c8c
+from django.http import HttpResponse
 
 from .decorators import role_required
-from .forms import FrameCommentForm
-from .models import ClinicianProfile, FrameComment, PatientAlert, PatientProfile, PressureFrame, PressureSession
+from .forms import AccountCreationForm, FrameCommentForm
+from .models import ClinicianProfile, FrameComment, PatientAlert, PatientProfile, PressureFrame
+from .utils import heatmap_cells
 
 User = get_user_model()
+INTERVAL_MAP = {'3h': 3, '9h': 9, '24h': 24}
 
 
-def _period_hours(value):
-    return {'1h': 1, '6h': 6, '24h': 24}.get(value)
-
-
-from django.contrib.auth.decorators import login_required
-
-
-@login_required
 def role_redirect(request):
-    if request.user.role == User.Roles.ADMIN:
-        return redirect('dashboard:admin_dashboard')
-    if request.user.role == User.Roles.CLINICIAN:
-        return redirect('dashboard:clinician_dashboard')
-    return redirect('dashboard:patient_dashboard')
+    if not request.user.is_authenticated:
+        return redirect('login')
+    return redirect(
+        'dashboard:admin_dashboard'
+        if request.user.role == User.Roles.ADMIN
+        else 'dashboard:clinician_dashboard'
+        if request.user.role == User.Roles.CLINICIAN
+        else 'dashboard:patient_dashboard'
+    )
+
+
+def _patient_sessions(patient):
+    return patient.sessions.order_by('session_date')
+
+
+def _filter_frames(patient, session_id=None, interval='24h'):
+    sessions = _patient_sessions(patient)
+    selected = sessions.filter(id=session_id).first() if session_id else sessions.last()
+    if not selected:
+        return sessions, None, PressureFrame.objects.none()
+    hours = INTERVAL_MAP.get(interval, 24)
+    end = selected.started_at + timedelta(hours=hours)
+    return sessions, selected, selected.frames.filter(recorded_at__lt=end).order_by('recorded_at')
+
+
+def _predict(frames):
+    peak = max((f.peak_pressure_index for f in frames), default=0)
+    base = [('A', 78, 'high risk', 10), ('B', 45, 'medium risk', 20), ('C', 23, 'low risk', 30)]
+    out = []
+    for name, prob, risk, time in base:
+        out.append(
+            {
+                'region': f'Region {name}',
+                'probability': max(8, min(99, round(prob + (peak - 100) / 5))),
+                'risk': risk,
+                'time': time,
+            }
+        )
+    return out
 
 
 @role_required(User.Roles.PATIENT)
 def patient_dashboard(request):
-    patient = get_object_or_404(PatientProfile, user=request.user)
-    period = request.GET.get('period', '24h')
-    selected_frame_id = request.GET.get('frame')
-    frames = PressureFrame.objects.filter(session__patient=patient).select_related('session')
+    patient = get_object_or_404(
+        PatientProfile.objects.select_related('user', 'clinician__user'), user=request.user
+    )
+    sessions, selected_session, frames_qs = _filter_frames(
+        patient, request.GET.get('day'), request.GET.get('interval', '24h')
+    )
+    frames = list(frames_qs)
+    selected_frame = frames[-1] if frames else None
+    interval = request.GET.get('interval', '24h')
+    chart_mode = request.GET.get('chart', 'interval')
 
-    hours = _period_hours(period)
-    if hours:
-        latest_ts = frames.order_by('-recorded_at').values_list('recorded_at', flat=True).first()
-        if latest_ts:
-            frames = frames.filter(recorded_at__gte=latest_ts - timedelta(hours=hours))
-
-    latest_frame = frames.order_by('-recorded_at').first()
-    if selected_frame_id:
-        selected_frame = get_object_or_404(PressureFrame.objects.select_related('session'), id=selected_frame_id, session__patient=patient)
+    if request.method == 'POST' and selected_frame:
+        form = FrameCommentForm(request.POST)
+        if form.is_valid():
+            c = form.save(commit=False)
+            c.frame = selected_frame
+            c.author = request.user
+            c.save()
+            messages.success(request, 'Comment submitted.')
+            return redirect(f'{request.path}?day={selected_session.id}&interval={interval}')
     else:
-        selected_frame = latest_frame
+        form = FrameCommentForm()
 
-    chart_frames = list(frames.order_by('recorded_at')[:300])
-    alerts = PatientAlert.objects.filter(patient=patient).select_related('frame')[:10]
-    top_comments = selected_frame.comments.filter(parent__isnull=True).select_related('author').prefetch_related('replies__author') if selected_frame else []
+    latest_alert = (
+        PatientAlert.objects.filter(patient=patient, reviewed=False)
+        .select_related('frame')
+        .first()
+    )
+    comments = (
+        selected_frame.comments.filter(parent__isnull=True).select_related('author')
+        if selected_frame
+        else []
+    )
+    all_session_frames = list(selected_session.frames.order_by('recorded_at')) if selected_session else []
+    hour_frames = []
+    if selected_frame:
+        start_hour = selected_frame.recorded_at - timedelta(hours=1)
+        hour_frames = [f for f in all_session_frames if f.recorded_at >= start_hour]
 
-    context = {
-        'patient': patient,
-        'selected_frame': selected_frame,
-        'latest_frame': latest_frame,
-        'alerts': alerts,
-        'period': period,
-        'chart_labels': json.dumps([frame.recorded_at.strftime('%m-%d %H:%M:%S') for frame in chart_frames]),
-        'ppi_data': json.dumps([frame.peak_pressure_index for frame in chart_frames]),
-        'contact_area_data': json.dumps([frame.contact_area_percent for frame in chart_frames]),
-        'frame_options': frames.order_by('-recorded_at')[:50],
-        'comment_form': FrameCommentForm(),
-        'top_comments': top_comments,
+    def _series(frame_list, attr):
+        return [round(getattr(f, attr), 2) for f in frame_list]
+
+    chart_sets = {
+        'hour': {
+            'labels': [f.recorded_at.strftime('%H:%M') for f in hour_frames],
+            'ppi': _series(hour_frames, 'peak_pressure_index'),
+            'contact': _series(hour_frames, 'contact_area_percent'),
+        },
+        'interval': {
+            'labels': [f.recorded_at.strftime('%H:%M') for f in frames],
+            'ppi': _series(frames, 'peak_pressure_index'),
+            'contact': _series(frames, 'contact_area_percent'),
+        },
+        'day': {
+            'labels': [f.recorded_at.strftime('%H:%M') for f in all_session_frames],
+            'ppi': _series(all_session_frames, 'peak_pressure_index'),
+            'contact': _series(all_session_frames, 'contact_area_percent'),
+        },
     }
-    return render(request, 'dashboard/patient_dashboard.html', context)
+    if chart_mode not in chart_sets:
+        chart_mode = 'interval'
+
+    predictive = _predict(frames)
+    return render(
+        request,
+        'dashboard/patient_dashboard.html',
+        {
+            'patient': patient,
+            'sessions': sessions,
+            'selected_session': selected_session,
+            'interval': interval,
+            'chart_mode': chart_mode,
+            'selected_frame': selected_frame,
+            'heatmap_cells': heatmap_cells(selected_frame.matrix_json) if selected_frame else [],
+            'latest_alert': latest_alert,
+            'current_metrics': {
+                'peak_pressure_index': round(selected_frame.peak_pressure_index, 1) if selected_frame else 0,
+                'contact_area_percent': round(selected_frame.contact_area_percent, 1) if selected_frame else 0,
+                'average_pressure': round(selected_frame.average_pressure, 1) if selected_frame else 0,
+                'reposition_per_hour': round(selected_frame.reposition_per_hour, 1) if selected_frame else 0,
+                'high_pressure_time': sum(1 for f in frames if f.flagged_for_review),
+            },
+            'comment_form': form,
+            'comments': comments,
+            'chart_labels': json.dumps(chart_sets[chart_mode]['labels']),
+            'ppi_data': json.dumps(chart_sets[chart_mode]['ppi']),
+            'contact_area_data': json.dumps(chart_sets[chart_mode]['contact']),
+            'predictive': predictive,
+            'recommendation': predictive[0]['risk'] if predictive else 'low risk',
+        },
+    )
 
 
 @role_required(User.Roles.PATIENT)
-def patient_frame_detail(request, frame_id):
-    patient = get_object_or_404(PatientProfile, user=request.user)
-    frame = get_object_or_404(PressureFrame, id=frame_id, session__patient=patient)
-    return redirect(f"/dashboard/patient/?frame={frame.id}")
-
-
-@role_required(User.Roles.PATIENT)
-def add_frame_comment(request, frame_id):
-    patient = get_object_or_404(PatientProfile, user=request.user)
-    frame = get_object_or_404(PressureFrame, id=frame_id, session__patient=patient)
-    form = FrameCommentForm(request.POST)
-    if request.method == 'POST' and form.is_valid():
-        comment = form.save(commit=False)
-        comment.frame = frame
-        comment.author = request.user
-        comment.save()
-        messages.success(request, 'Your note was added for this timestamp.')
-    else:
-        messages.error(request, 'Could not save your note.')
-    return redirect(f"/dashboard/patient/?frame={frame.id}")
+def dismiss_patient_alert(request, alert_id):
+    alert = get_object_or_404(PatientAlert, id=alert_id, patient__user=request.user)
+    if request.method == 'POST':
+        alert.reviewed = True
+        alert.save(update_fields=['reviewed'])
+        messages.success(request, 'Alert dismissed.')
+    return redirect('dashboard:patient_dashboard')
 
 
 @role_required(User.Roles.CLINICIAN)
 def clinician_dashboard(request):
-    clinician = get_object_or_404(ClinicianProfile, user=request.user)
-    patients = clinician.patients.select_related('user').annotate(session_count=Count('sessions')).order_by('user__username')
-    alerts = PatientAlert.objects.filter(patient__clinician=clinician).select_related('patient__user', 'frame').order_by('-created_at')[:20]
-    recent_comments = FrameComment.objects.filter(frame__session__patient__clinician=clinician, parent__isnull=True).select_related('author', 'frame__session__patient__user').order_by('-created_at')[:20]
-    context = {
-        'clinician': clinician,
-        'patients': patients,
-        'alerts': alerts,
-        'recent_comments': recent_comments,
-    }
-    return render(request, 'dashboard/clinician_dashboard.html', context)
+    clinician = get_object_or_404(ClinicianProfile.objects.select_related('user'), user=request.user)
+    patients = list(
+        clinician.patients.select_related('user')
+        .annotate(session_count=Count('sessions'))
+        .order_by('external_id')
+    )
+    active = patients[0] if patients else None
+    pid = request.GET.get('patient')
+    if pid:
+        active = next((p for p in patients if str(p.id) == str(pid)), active)
+
+    frames = (
+        list(
+            PressureFrame.objects.filter(session__patient=active)
+            .select_related('session')
+            .order_by('-recorded_at')[:30]
+        )
+        if active
+        else []
+    )
+    alerts = (
+        PatientAlert.objects.filter(patient=active)
+        .select_related('frame')
+        .order_by('-created_at')[:10]
+        if active
+        else []
+    )
+    comments = (
+        FrameComment.objects.filter(frame__session__patient=active, parent__isnull=True)
+        .select_related('author', 'frame')
+        .prefetch_related('replies__author')
+        .order_by('-created_at')[:10]
+        if active
+        else []
+    )
+    reports = [
+        {
+            'frame': f,
+            'risk': 'high' if f.peak_pressure_index >= 130 else 'medium' if f.peak_pressure_index >= 110 else 'low',
+        }
+        for f in frames[:8]
+    ]
+    return render(
+        request,
+        'dashboard/clinician_dashboard.html',
+        {
+            'clinician': clinician,
+            'patients': patients,
+            'active_patient': active,
+            'alerts': alerts,
+            'comments': comments,
+            'reports': reports,
+        },
+    )
 
 
 @role_required(User.Roles.CLINICIAN)
-def clinician_patient_detail(request, patient_id):
+def review_alert(request, alert_id):
+    clinician = get_object_or_404(ClinicianProfile, user=request.user)
+    alert = get_object_or_404(PatientAlert, id=alert_id, patient__clinician=clinician)
+    if request.method == 'POST':
+        alert.reviewed = True
+        alert.save(update_fields=['reviewed'])
+        messages.success(request, 'Alert marked as reviewed.')
+    return redirect(f"{redirect('dashboard:clinician_dashboard').url}?patient={alert.patient_id}")
+
+
+@role_required(User.Roles.CLINICIAN)
+def reply_comment(request, comment_id):
+    clinician = get_object_or_404(ClinicianProfile, user=request.user)
+    parent = get_object_or_404(
+        FrameComment.objects.select_related('frame__session__patient'),
+        id=comment_id,
+        frame__session__patient__clinician=clinician,
+    )
+    if request.method == 'POST':
+        message = (request.POST.get('message') or '').strip()
+        if message:
+            FrameComment.objects.create(
+                frame=parent.frame,
+                author=request.user,
+                parent=parent,
+                message=message,
+            )
+            messages.success(request, 'Reply added to comment.')
+        else:
+            messages.error(request, 'Reply message cannot be empty.')
+    return redirect(f"{redirect('dashboard:clinician_dashboard').url}?patient={parent.frame.session.patient_id}")
+
+
+
+
+@role_required(User.Roles.PATIENT)
+def download_patient_report(request):
+    patient = get_object_or_404(PatientProfile.objects.select_related('user'), user=request.user)
+    sessions, selected_session, frames_qs = _filter_frames(
+        patient, request.GET.get('day'), request.GET.get('interval', '24h')
+    )
+    frames = list(frames_qs)
+    response = HttpResponse(content_type='text/csv')
+    day_label = selected_session.session_date.isoformat() if selected_session else 'report'
+    response['Content-Disposition'] = f'attachment; filename="graphene_trace_report_{patient.external_id}_{day_label}.csv"'
+    response.write('patient_name,patient_id,session_date,interval,recorded_at,frame_index,peak_pressure_index,contact_area_percent,average_pressure,repositions_per_hour,flagged_for_review\n')
+
+    for frame in frames:
+        response.write(
+            f'"{patient.user.get_full_name() or patient.user.username}",{patient.external_id},{selected_session.session_date if selected_session else ""},{request.GET.get("interval", "24h")},{frame.recorded_at.isoformat()},{frame.frame_index},{round(frame.peak_pressure_index,2)},{round(frame.contact_area_percent,2)},{round(frame.average_pressure,2)},{round(frame.reposition_per_hour,2)},{"Yes" if frame.flagged_for_review else "No"}'
+        )
+    return response
+
+@role_required(User.Roles.CLINICIAN)
+def clinician_download_patient_report(request, patient_id):
     clinician = get_object_or_404(ClinicianProfile, user=request.user)
     patient = get_object_or_404(PatientProfile.objects.select_related('user'), id=patient_id, clinician=clinician)
-    frames = PressureFrame.objects.filter(session__patient=patient).select_related('session').order_by('-recorded_at')
-    selected_frame = frames.first()
-    comments = selected_frame.comments.filter(parent__isnull=True).select_related('author').prefetch_related('replies__author') if selected_frame else []
-    context = {
-        'clinician': clinician,
-        'patient': patient,
-        'selected_frame': selected_frame,
-        'frame_options': frames[:50],
-        'comments': comments,
-        'reply_form': FrameCommentForm(),
-    }
-    return render(request, 'dashboard/clinician_patient_detail.html', context)
+    sessions, selected_session, frames_qs = _filter_frames(
+        patient, request.GET.get('day'), request.GET.get('interval', '24h')
+    )
+    frames = list(frames_qs)
+    response = HttpResponse(content_type='text/csv')
+    day_label = selected_session.session_date.isoformat() if selected_session else 'report'
+    response['Content-Disposition'] = f'attachment; filename="graphene_trace_report_{patient.external_id}_{day_label}.csv"'
+    response.write('patient_name,patient_id,session_date,interval,recorded_at,frame_index,peak_pressure_index,contact_area_percent,average_pressure,repositions_per_hour,flagged_for_review\n')
+    for frame in frames:
+        response.write(
+            f'"{patient.user.get_full_name() or patient.user.username}",{patient.external_id},{selected_session.session_date if selected_session else ""},{request.GET.get("interval", "24h")},{frame.recorded_at.isoformat()},{frame.frame_index},{round(frame.peak_pressure_index,2)},{round(frame.contact_area_percent,2)},{round(frame.average_pressure,2)},{round(frame.reposition_per_hour,2)},{"Yes" if frame.flagged_for_review else "No"}\n'
+        )
+    return response
 
+from .forms import PatientClinicianRegistrationForm
 
-@role_required(User.Roles.CLINICIAN)
-def reply_to_comment(request, comment_id):
-    clinician = get_object_or_404(ClinicianProfile, user=request.user)
-    parent = get_object_or_404(FrameComment, id=comment_id, frame__session__patient__clinician=clinician)
-    form = FrameCommentForm(request.POST)
-    if request.method == 'POST' and form.is_valid():
-        reply = form.save(commit=False)
-        reply.frame = parent.frame
-        reply.author = request.user
-        reply.parent = parent
-        reply.save()
-        messages.success(request, 'Reply added.')
-    return redirect('dashboard:clinician_patient_detail', patient_id=parent.frame.session.patient.id)
+def register(request):
+    form = PatientClinicianRegistrationForm()
+    if request.method == 'POST':
+        form = PatientClinicianRegistrationForm(request.POST)
+        if form.is_valid():
+            role = form.cleaned_data['role']
+            first = form.cleaned_data['first_name']
+            last = form.cleaned_data['last_name']
+            email = form.cleaned_data['email']
+            external = form.cleaned_data['external_id'] or (
+                'P-XXXX' if role == 'patient' else 'C-XXXX'
+            )
+            password = form.cleaned_data['password']
+
+            # Generate unique username
+            base = (first or email.split('@')[0]).lower()
+            username = base
+            i = 1
+            while User.objects.filter(username=username).exists():
+                i += 1
+                username = f'{base}{i}'
+
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=first,
+                last_name=last,
+                email=email,
+                role=role,
+            )
+            if role == 'clinician':
+                ClinicianProfile.objects.create(user=user, specialty='General')
+            elif role == 'patient':
+                PatientProfile.objects.create(
+                    user=user,
+                    external_id=external,
+                    clinician=ClinicianProfile.objects.first(),
+                )
+            messages.success(request, f'Account created! You can now log in as {first}.')
+            return redirect('login')
+    return render(request, 'registration/register.html', {'form': form})
 
 
 @role_required(User.Roles.ADMIN)
 def admin_dashboard(request):
-    context = {
-        'user_count': User.objects.count(),
-        'patient_count': PatientProfile.objects.count(),
-        'clinician_count': ClinicianProfile.objects.count(),
-        'session_count': PressureSession.objects.count(),
-        'frame_count': PressureFrame.objects.count(),
-        'alert_count': PatientAlert.objects.count(),
-        'latest_sessions': PressureSession.objects.select_related('patient__user')[:10],
-    }
-    return render(request, 'dashboard/admin_dashboard.html', context)
-<<<<<<< HEAD
-=======
-
-@role_required(User.Roles.PATIENT)
-def upload_pressure_file(request):
-    patient = get_object_or_404(PatientProfile, user=request.user)
-
-    if request.method == 'POST':
-        form = UploadPressureFileForm(request.POST, request.FILES)
+    form = AccountCreationForm()
+    if request.method == 'POST' and request.POST.get('action') == 'create_account':
+        form = AccountCreationForm(request.POST)
         if form.is_valid():
-            upload = form.save(commit=False)
-            upload.patient = patient
-            upload.save()
-
-            csv_file = upload.file.path
-            source_name = upload.file.name.split('/')[-1]
-
-            session_date = timezone.now().date()
-            session_start = timezone.now()
-
-            session = PressureSession.objects.create(
-                patient=patient,
-                source_file=source_name,
-                session_date=session_date,
-                started_at=session_start,
-                frame_count=0,
+            role = form.cleaned_data['role']
+            first = form.cleaned_data['first_name']
+            last = form.cleaned_data['last_name']
+            email = form.cleaned_data['email']
+            external = form.cleaned_data['external_id'] or (
+                'P-XXXX' if role == User.Roles.PATIENT else 'C-XXXX'
             )
-
-            with open(csv_file, newline='') as f:
-                rows = [list(map(float, row)) for row in csv.reader(f) if row]
-
-            frame_count = len(rows) // 32
-
-            for frame_index in range(frame_count):
-                matrix = rows[frame_index * 32:(frame_index + 1) * 32]
-                recorded_at = session_start + timedelta(seconds=frame_index)
-                metrics = compute_frame_metrics(matrix)
-
-                frame = PressureFrame.objects.create(
-                    session=session,
-                    frame_index=frame_index,
-                    recorded_at=recorded_at,
-                    matrix_json=matrix,
-                    **metrics,
+            username = (first or email.split('@')[0]).lower()
+            base = username
+            i = 1
+            while User.objects.filter(username=username).exists():
+                i += 1
+                username = f'{base}{i}'
+            user = User.objects.create_user(
+                username=username,
+                password=f'{username}@123',
+                first_name=first,
+                last_name=last,
+                email=email,
+                role=role,
+            )
+            if role == User.Roles.CLINICIAN:
+                ClinicianProfile.objects.create(user=user, specialty='Wound Care')
+            elif role == User.Roles.PATIENT:
+                PatientProfile.objects.create(
+                    user=user,
+                    external_id=external,
+                    clinician=ClinicianProfile.objects.first(),
                 )
+            messages.success(request, f'Created {role} account for {first}.')
+            return redirect('dashboard:admin_dashboard')
 
-                if metrics['flagged_for_review']:
-                    max_value = metrics['peak_pressure_index'] or metrics['max_pressure']
-                    level = PatientAlert.Levels.CRITICAL if max_value >= HIGH_PRESSURE_THRESHOLD + 30 else PatientAlert.Levels.WARNING
-                    PatientAlert.objects.create(
-                        patient=patient,
-                        frame=frame,
-                        level=level,
-                        message=f'High pressure region detected at frame {frame_index}.',
-                    )
+    if request.method == 'POST' and request.POST.get('action') == 'toggle_access':
+        user = get_object_or_404(User, id=request.POST.get('user_id'))
+        if user != request.user:
+            user.is_active = not user.is_active
+            user.save(update_fields=['is_active'])
+            messages.success(request, f'Updated access for {user.username}.')
+        return redirect('dashboard:admin_dashboard')
 
-            session.frame_count = frame_count
-            session.save()
-            upload.processed = True
-            upload.save()
-
-            messages.success(request, 'CSV uploaded and processed successfully.')
-            return redirect('dashboard:patient_dashboard')
-    else:
-        form = UploadPressureFileForm()
-
-    return render(request, 'dashboard/upload_pressure_file.html', {'form': form})
->>>>>>> e8972cb74228f0025e74b408502006ef45737c8c
+    return render(
+        request,
+        'dashboard/admin_dashboard.html',
+        {
+            'create_form': form,
+            'recent_accounts': list(User.objects.order_by('-date_joined')[:6]),
+            'accounts': list(User.objects.exclude(role=User.Roles.ADMIN).order_by('role', 'username')),
+            'patient_count': PatientProfile.objects.count(),
+            'clinician_count': ClinicianProfile.objects.count(),
+        },
+    )

@@ -1,57 +1,129 @@
 {% extends 'base.html' %}
 {% block title %}Clinician Dashboard{% endblock %}
 {% block content %}
-<h1 class="mb-4">Clinician Dashboard</h1>
-<div class="row g-4">
-  <div class="col-lg-5">
-    <div class="card h-100">
-      <div class="card-body">
-        <h4>Your patients</h4>
-        <ul class="list-group list-group-flush">
-          {% for patient in patients %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <div class="fw-semibold">{{ patient.user.username }}</div>
-                <small class="text-muted">External ID: {{ patient.external_id }}</small>
-              </div>
-              <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:clinician_patient_detail' patient.id %}">Review</a>
-            </li>
-          {% empty %}
-            <li class="list-group-item">No patients assigned.</li>
-          {% endfor %}
-        </ul>
-      </div>
+<div class="topbar">
+  <div class="brand-block">
+    <div>
+      <div class="brand-title">Graphene Trace</div>
+      <div class="brand-subtitle">Clinician Dashboard</div>
     </div>
   </div>
-  <div class="col-lg-7">
-    <div class="card mb-4">
-      <div class="card-body">
-        <h4>Recent alerts</h4>
-        <table class="table table-sm">
-          <thead><tr><th>Patient</th><th>Time</th><th>Level</th><th>Message</th></tr></thead>
-          <tbody>
-            {% for alert in alerts %}
-              <tr><td>{{ alert.patient.user.username }}</td><td>{{ alert.frame.recorded_at }}</td><td>{{ alert.level }}</td><td>{{ alert.message }}</td></tr>
-            {% empty %}
-              <tr><td colspan="4">No alerts.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+  <div class="user-block">
+    <div class="text-end">
+      <div class="user-name">{{ clinician.user.first_name|default:clinician.user.username }}</div>
+      <div class="brand-subtitle">Clinician</div>
+    </div>
+    <form method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button class="icon-btn">↪</button>
+    </form>
+  </div>
+</div>
+<div class="dashboard-grid clinician-grid">
+  <div class="content-card side-panel">
+    <div class="section-title">My Patients</div>
+    <div class="brand-subtitle mb-3">Select a patient to view details</div>
+    {% for patient in patients %}
+      <a href="?patient={{ patient.id }}" class="patient-tile {% if active_patient and patient.id == active_patient.id %}active{% endif %}">
+        <div>{{ patient.user.first_name|default:patient.user.username }}</div>
+        <div class="brand-subtitle">{{ patient.external_id }}</div>
+      </a>
+    {% endfor %}
+  </div>
+  <div>
+    <div class="content-card mb-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="fw-semibold">{% if active_patient %}{{ active_patient.user.first_name }}{% endif %}</div>
+          <div class="brand-subtitle">Patient ID: {% if active_patient %}{{ active_patient.external_id }}{% endif %}</div>
+        </div>
+        <div class="text-end">
+          <div class="fw-semibold">Last Active</div>
+          <div class="brand-subtitle">minutes ago</div>
+        </div>
       </div>
     </div>
-    <div class="card">
-      <div class="card-body">
-        <h4>Recent patient comments</h4>
-        {% for comment in recent_comments %}
-          <div class="border rounded p-3 mb-3">
-            <div class="small text-muted">{{ comment.frame.session.patient.user.username }} · {{ comment.created_at }}</div>
-            <div>{{ comment.message }}</div>
+
+    <div class="section-title">⚠ Alerts</div>
+
+    <div class="content-card mt-3">
+      <div class="section-title">High Pressure Alert Review</div>
+      {% for alert in alerts %}
+        <div class="list-row mt-2 list-row-stack">
+          <div>
+            <div class="fw-semibold">{{ alert.message }}</div>
+            <div class="brand-subtitle">{{ alert.frame.recorded_at|date:'Y-m-d H:i' }} • {{ alert.level|title }}</div>
           </div>
-        {% empty %}
-          <p class="mb-0">No recent comments.</p>
-        {% endfor %}
-      </div>
+          <div class="d-flex align-items-center gap-2">
+            {% if alert.reviewed %}
+              <span class="risk-badge low">reviewed</span>
+            {% else %}
+              <form method="post" action="{% url 'dashboard:review_alert' alert.id %}">
+                {% csrf_token %}
+                <button class="secondary-btn" type="submit">Mark Reviewed</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      {% empty %}
+        <div class="brand-subtitle mt-3">No alerts for this patient.</div>
+      {% endfor %}
     </div>
+
+    <div class="content-card mt-3">
+      <div class="section-title">Comments</div>
+      {% for comment in comments %}
+        <div class="comment-thread mt-3">
+          <div class="list-row list-row-stack">
+            <div>
+              <div class="fw-semibold">{{ comment.author.first_name|default:comment.author.username }}</div>
+              <div class="brand-subtitle">{{ comment.message }}</div>
+            </div>
+            <div class="brand-subtitle">{{ comment.created_at|date:'Y-m-d H:i' }}</div>
+          </div>
+          {% for reply in comment.replies.all %}
+            <div class="reply-mini">
+              <div class="fw-semibold">{{ reply.author.first_name|default:reply.author.username }}</div>
+              <div>{{ reply.message }}</div>
+              <div class="brand-subtitle mt-1">{{ reply.created_at|date:'Y-m-d H:i' }}</div>
+            </div>
+          {% endfor %}
+          <form method="post" action="{% url 'dashboard:reply_comment' comment.id %}" class="mt-2">
+            {% csrf_token %}
+            <textarea name="message" rows="2" class="form-control" placeholder="Reply to this patient comment..."></textarea>
+            <div class="mt-2 text-end">
+              <button class="primary-btn" type="submit">Reply</button>
+            </div>
+          </form>
+        </div>
+      {% empty %}
+        <div class="brand-subtitle mt-2">No patient comments yet.</div>
+      {% endfor %}
+    </div>
+
+    <div class="content-card mt-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="section-title">Reports</div>
+        {% if active_patient %}
+          <a class="secondary-btn"
+             href="{% url 'dashboard:clinician_download_patient_report' active_patient.id %}?interval=24h">
+            ⬇ Download Report
+          </a>
+        {% endif %}
+      </div>
+      {% for item in reports %}
+        <div class="list-row mt-2">
+          <div>
+            <div class="fw-semibold">Frame {{ item.frame.frame_index }}</div>
+            <div class="brand-subtitle">{{ item.frame.recorded_at|date:'Y-m-d H:i' }}</div>
+          </div>
+          <div class="risk-badge {{ item.risk }}">{{ item.risk }} risk</div>
+        </div>
+      {% empty %}
+        <div class="brand-subtitle mt-2">No report items available.</div>
+      {% endfor %}
+    </div>
+
   </div>
 </div>
 {% endblock %}
